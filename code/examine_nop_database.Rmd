@@ -1,0 +1,95 @@
+---
+title: "NOP Database Descriptives"
+author: "Tyler Scott"
+date: "7/1/2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(data.table)
+library(dplyr)
+library(readxl)
+knitr::opts_chunk$set(echo = TRUE)
+## load csv files
+dts = lapply(paste0('../input/',grep('\\.csv',list.files('../input'),value=T)),fread)
+## drop blank empty columns
+dts = lapply(dts, function(x) x[,colSums(!(is.na(x)|x=='')) != 0,with=F])
+years = 2012:2016
+for (i in 1:length(dts)){dts[[i]]$Year = years[i]}
+for (i in 1:length(dts)){names(dts[[i]]) = gsub(' ','_',names(dts[[i]]))}
+
+dts[[1]]$Status = NA
+
+dts[[1]]  = dts[[1]] %>% rename(ID = `Certification_#`)
+
+dts[[3]]  = dts[[3]] %>% rename(ID = `Certification_#`,
+                                Operation_Name = `Operation's_Name`)
+
+dts[[4]]  = dts[[4]] %>% rename(Certifying_Agent = Cert_name,
+                    ID = op_nopOpID,Operation_Name = op_name,
+                    Status = op_status,
+                    Country = opPA_country)
+
+dts[[5]]  = dts[[5]] %>% rename(
+  Status = Operation_Certification_Status,
+  ID  = Operation_ID,
+  Certifying_Agent = Certifier_Name)
+
+alldf = plyr::join_all(dts,type='full')
+alldf$Country[grep('United States',alldf$Country)] = 'US'
+
+usdf = filter(alldf,Country=='US')
+usdf$Status = gsub(' .*','',usdf$Status)
+usdf$Status[usdf$Status=='Surrender'] = 'Surrendered'
+usdf = usdf %>% filter(Year!=2012)
+```
+
+```{r echo=FALSE,results='as.is'}
+library(knitr)
+kable(table(usdf$Status,usdf$Year))
+```
+
+```{r}
+
+table(usdf$Operation_Name[usdf$Year==2013&usdf$Status=='Surrendered'] %in%
+  usdf$Operation_Name[usdf$Year==2014])
+
+
+length(unique(usdf$Operation_Name))
+
+
+all_years = expand.grid(unique(sort(usdf$Operation_Name)),2013:2016) %>% rename(Operation_Name = Var1,Year = Var2) %>% arrange(Operation_Name)
+
+test = left_join(all_years,usdf[,c('Operation_Name','Status','Year')])
+
+
+grep('Diamond',test$Operation_Name,value=T)
+
+
+table(usdf$Operation_Name[usdf$Year==2013&usdf$Status=='Surrendered'] %in%
+  usdf$Operation_Name[usdf$Year==2015])
+
+table(usdf$Operation_Name[usdf$Year==2013&usdf$Status=='Surrendered'] %in%
+  usdf$Operation_Name[usdf$Year==2014])
+
+
+```
+
+
+
+
+
+
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+## Including Plots
+
+You can also embed plots, for example:
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
