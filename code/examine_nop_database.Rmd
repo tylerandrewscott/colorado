@@ -76,10 +76,11 @@ cert_state_links$Active = cert_state_links$Active == 1
 write.csv(cert_state_links,'input/competition_input/certifier_in_state_by_year.csv')
 
 
+cert_df = data.frame(Certifiers = as.character(sort(unique(cert_state_links$Certifier))))
 
+write.csv(cert_df,'input/competition_input/certifiers.csv')
 
-
-.the basic info needed is # of total organic operations per state, # of organic operations by state per certifier, and the states in which a certifier certifies.  
+w.the basic info needed is # of total organic operations per state, # of organic operations by state per certifier, and the states in which a certifier certifies.  
 
 
 
