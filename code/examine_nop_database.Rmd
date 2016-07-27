@@ -2,94 +2,401 @@
 title: "NOP Database Descriptives"
 author: "Tyler Scott"
 date: "7/1/2016"
-output: html_document
+output:
+  html_document:
+    self_contained: no
 ---
 
 ```{r setup, include=FALSE}
 library(data.table)
 library(dplyr)
 library(readxl)
+library(knitr)
+library(lubridate)
 knitr::opts_chunk$set(echo = TRUE)
-## load csv files
-dts = lapply(paste0('../input/',grep('\\.csv',list.files('../input'),value=T)),fread)
-## drop blank empty columns
-dts = lapply(dts, function(x) x[,colSums(!(is.na(x)|x=='')) != 0,with=F])
-years = 2012:2016
-for (i in 1:length(dts)){dts[[i]]$Year = years[i]}
-for (i in 1:length(dts)){names(dts[[i]]) = gsub(' ','_',names(dts[[i]]))}
 
-dts[[1]]$Status = NA
+temp = read.csv('input/OID.OperationSearchResults.2016.7.1.3-57 PM.csv')
+temp = temp %>% filter(grepl('United States',Country))
 
-dts[[1]]  = dts[[1]] %>% rename(ID = `Certification_#`)
+temp = temp %>% rename(Last_Date = Effective.Date.of.Operation.Status,
+                       Status = Operation.Certification.Status) %>%
+  mutate(Last_Date = mdy(Last_Date)) %>% mutate(Dec_Date =decimal_date(Last_Date),Year = year(Last_Date),Month = month(Last_Date))  %>% rename(Certifier = Certifier.Name)
 
-dts[[3]]  = dts[[3]] %>% rename(ID = `Certification_#`,
-                                Operation_Name = `Operation's_Name`)
+library(tidyr)
 
-dts[[4]]  = dts[[4]] %>% rename(Certifying_Agent = Cert_name,
-                    ID = op_nopOpID,Operation_Name = op_name,
-                    Status = op_status,
-                    Country = opPA_country)
 
-dts[[5]]  = dts[[5]] %>% rename(
-  Status = Operation_Certification_Status,
-  ID  = Operation_ID,
-  Certifying_Agent = Certifier_Name)
+years = 2002:2016
+uq.operator = unique(temp$Operation.ID)
+op_year_combos = expand.grid(years,uq.operator)
+colnames(op_year_combos) = c('Year','Operation.ID')
+op_year_combos$Active = NA
 
-alldf = plyr::join_all(dts,type='full')
-alldf$Country[grep('United States',alldf$Country)] = 'US'
+still_active = filter(temp,Status =='Certified')
+inactive = filter(temp,Status!='Certified')
 
-usdf = filter(alldf,Country=='US')
-usdf$Status = gsub(' .*','',usdf$Status)
-usdf$Status[usdf$Status=='Surrender'] = 'Surrendered'
-usdf = usdf %>% filter(Year!=2012)
+op_year_combos$Active[match(still_active$Operation.ID,op_year_combos$Operation.ID)] = 1
+
+temp_post_2002 = temp %>% filter(Year>2002)
+year_vec = sapply(ifelse(temp_post_2002$Status=='Certified',2016,temp_post_2002$Year-1),function(x) 2002:x)
+
+year_grid_expand = lapply(1:nrow(temp_post_2002),function(x)
+  expand.grid(temp_post_2002$Operation.ID[x],year_vec[[x]]))
+
+active_id_by_year =  do.call('rbind',year_grid_expand)
+colnames(active_id_by_year) = c('Operation.ID','Year')
+
+active_id_by_year$State = temp_post_2002$State.Province[match(active_id_by_year$Operation.ID,temp_post_2002$Operation.ID)]
+active_id_by_year$Certifier = temp_post_2002$Certifier[match(active_id_by_year$Operation.ID,temp_post_2002$Operation.ID)]
+
+
+active_in_state = active_id_by_year %>% group_by(State,Year) %>% summarize(active_in_state = n())
+active_in_state$State_Abb = state.abb[match(active_in_state$State,state.name)]
+write.csv(active_in_state,'input/competition_input/operations_by_state_year.csv')
+
+
+active_in_state_by_certifier = active_id_by_year %>% group_by(State,Year,Certifier) %>%
+  summarize(active = n())
+active_in_state_by_certifier$State_Abb = state.abb[match(active_in_state_by_certifier$State,state.name)]
+write.csv(active_in_state_by_certifier,'input/competition_input/operations_by_state_year_certifier.csv')
+
+
+cert_state_year = lapply(2002:2016,function(x) 
+  as.matrix(table(
+    as.character(
+      active_in_state_by_certifier$Certifier[active_in_state_by_certifier$Year==x]),
+      as.character(active_in_state_by_certifier$State[active_in_state_by_certifier$Year==x]))))
+
+cert_state_year_df_list = lapply(1:length(cert_state_year),function(x) as.data.frame(cert_state_year[[x]]) %>%
+         mutate(Year = (2002:2016)[x]))
+
+cert_state_links = do.call('rbind',cert_state_year_df_list)
+names(cert_state_links) = c('Certifier','State','Active','Year')
+cert_state_links$Active = cert_state_links$Active == 1
+
+write.csv(cert_state_links,'input/competition_input/certifier_in_state_by_year.csv')
+
+
+
+
+
+.the basic info needed is # of total organic operations per state, # of organic operations by state per certifier, and the states in which a certifier certifies.  
+
+
+
+
+
+length(ifelse(temp$Status=='Certified',2016,temp$Year-1))
+
+do.call('expand.grid',)
+    
+  ifelse(temp$Status[x]=='Certified',2016,temp$Year[x]-1)))
+
+inactive$Year[match(op_year_combos$Operation.ID,inactive$Operation.ID)]
+
+
+
+temp$Status
+
+
+complete(
+)
+
+
+
+nop_start = mdy('10/21/2002')
+##Note: 1 obs surrendered license on date of NOP start
+temp$Before_NOP = temp$Last_Date<=nop_start
+
+## Drop producers who were revoked, surrendered, or suspended _prior_ to adoption of NOP standards in October, 2002
+
+temp = temp %>% filter(!(Before_NOP&Status!='Certified'))
 ```
 
 ```{r echo=FALSE,results='as.is'}
-library(knitr)
-kable(table(usdf$Status,usdf$Year))
+kable(as.data.frame(table(temp$Status)))
 ```
+
+```{r echo=FALSE,results='as.is'}
+library(ggplot2)
+library(ggthemes)
+year_status = temp %>% group_by(Status,Year) %>% summarize(Count =n())
+ggplot(year_status,aes(y=Count,x=Year,fill=Status)) + geom_bar(stat='identity') + facet_wrap(~Status,scales = 'free') +
+   theme_tufte(ticks=F) + 
+    theme(legend.position = c(0.9,0.9))+
+  scale_fill_colorblind() + guides(fill = FALSE) + geom_vline(aes(xintercept=2002,colour='grey50'),lty=2) +
+  scale_colour_manual(name='',labels='NOP Start',values='grey50')
+```
+
+Be sure to note that x and y axes vary over panels. No revocations or suspensions before 2000, although certification date back to 1975. Revocations have been declininng since 2005, while suspensions and surrenders have been on the rise (last drop is partial 2016 obs).
+
+```{r echo=FALSE,results='as.is'}
+temp$Time_Since_Status = decimal_date(Sys.Date()) - temp$Dec_Date
+certified = temp %>% filter(Status == 'Certified')
+
+ggplot(certified,aes(Time_Since_Status)) + geom_histogram() + 
+  theme_tufte(ticks=F) + xlab('Years With Active Certification') +
+  ylab('Certified Operators')
+```
+
+```{r echo=FALSE,results='as.is'}
+total_counts = temp %>% group_by(Certifier) %>% 
+  summarize(total = n()) %>% arrange(total)
+total_counts$rank = 1:nrow(total_counts)
+temp = left_join(temp,total_counts)
+
+ggplot(temp,aes(x=rank,fill=Status)) + geom_bar()  +
+   theme_tufte(ticks=F) + 
+  theme(axis.text.x=element_blank()) + 
+  xlab('Certifier (ranked by total)') + ylab('Total Operators') + 
+  scale_fill_colorblind() + theme(legend.position = c(0.2,0.4))
+```
+
+```{r echo=FALSE,results='as.is'}
+total_by_status = temp %>% group_by(Certifier,Status) %>%
+  summarize(status_total = n()) 
+total_by_status = left_join(total_by_status,total_counts)
+total_by_status = total_by_status %>% mutate(prop = status_total/total)
+
+ggplot(total_by_status[total_by_status$Status!='Certified',],aes(x=total,y = prop,colour=Status)) + 
+  geom_point() + stat_smooth(aes(fill=Status),alpha=0.2) +   
+  theme_tufte(ticks=F)  +
+  scale_color_colorblind() + ylab("Proportion of operators") +
+  scale_fill_colorblind() + 
+  xlab('Certifier size (Total operators affiliated with certifier)') + 
+  theme(legend.position = c(0.8,0.8))
+```
+
+Below, I fit a survival model. The issue is that our data do not fit within standard modeling protocols (e.g., what to do with left or right censoring/truncation), since in our case we observed two groups: (1) right censored inviduals, where we observed start time (certification date) but not any failure (since they are still certified); and then (2) operators who have already surrendered their license (or have had it revoked or suspended), so we know the "failure date" but not the start date ("left censoring" is when failure has already occured before enrollment, which we don't have because we know the exact "failure date", and "left truncation" is when exposure start time predates the observation period, but you still observe an exposure period of some length). 
+
+To try to get around this, I simulate start dates for operators who are currently observed to have a suspended, revoked, or surrendered license, and then run a survival model on the resultant data. The simulation process works as follows:
+
+
+1. For each observed suspension/revocation/surrender (herafter "failure"), randomly sample a start date from observed certification dates that pre-date the date of failure. This essentially works as if I am sampling from the empirical probability density function; I use this instead of a uniform distribution between the first observed certification date and the date of failure is because the distribution of certifications is far from uniform; as shown above, the distribution of observed certifications starts back in 1975, but there are only a few certifications prior to about 1995, and then increasing through 2016. Note that I assume that no certification lasts for less than 1 year, so in reality I sample from the set of certification dates that are between the first observed certification and 1 year prior to the failure date.
+
+2. I then fit a survival model (first, just a cox proportional hazard model since I do not have an a priori assumption about the functional form) to the simulated data.
+
+3. I repeat steps 1 and 2 1000 times, and record the parameter estimates resultant from each simulation. In essence, this is non-parameteric bootstrapping, because the parameter estimate and credible interval are generated by the distribution of estimated parameters. 
+
+4. The model is a mixed effects model (multilevel in this case with a random effect for each certifier). As a demonstration, I store the random intercept estimate for each certifier.
+
+Observed  Pre-NOP (10/2002)   Keep    Details
+--------  -----------------   ----    ----
+Failure   Yes                 No      Left-censored (dropped out before program started)
+Failure   No                  Yes     Failure after NOP start, but uncertain certification date
+Certified Yes                 Yes     Left-truncation ('at-risk' prior to program start) AND right-censored (haven't yet observed failure)
+Certified No                  Yes     Right-censored (still have not failed)
+
+After dropping the first type of observation, the other three types are handled by:
+
+1. Left-truncation: assign "start date" as age of certification at NOP start (10/2002), end date = failure date, event = 0
+2. Right censored: start date = certification date, end date = current date, event = 0.
+3. Uncertain start date: Sample from observed start dates; if sample < NOP start, follow procedure for left-truncated data; if sample > NOP, assign sample date as start date, observed failure date as end date, and event = 1.
+
+```{r message = FALSE,results='as.is'}
+library(survival)
+library(coxme)
+
+scope = data.frame(
+stock = ifelse(temp$LIVESTOCK.Scope.Certification.Status!='',1,0),
+crops = ifelse(temp$CROPS.Scope.Certification.Status!='',1,0),
+wild.crops = ifelse(temp$WILD.CROPS.Scope.Certification.Status!='',1,0),
+handling = ifelse(temp$HANDLING.Scope.Certification.Status!='',1,0),
+Certifier = as.character(temp$Certifier)
+)
+
+
+first_date = min(temp$Dec_Date)
+nop_dec = decimal_date(nop_start)
+current_date = decimal_date(mdy('07/01/2016'))
+time_status = data.frame(x1 = 
+  ifelse(temp$Status=='Certified',temp$Dec_Date,NA),
+x2 = ifelse(temp$Status=='Certified',NA,
+                        temp$Dec_Date),
+status = ifelse(temp$Status=='Certified',0,1)
+)
+
+death_dates = time_status$x2[is.na(time_status$x1)]
+draw_from = time_status$x1[!is.na(time_status$x1)]
+
+## How to creat surv object with left-truncation and right censoring
+# Surv (##Age at start of observation, ##age at start + last obs, ##event)
+set.seed(24)
+reps = 10
+boot_grabs = t(sapply(death_dates, function(x) 
+  base::sample(draw_from[draw_from<=(x-1)],reps,replace=T)))
+
+rep_x1 = replicate(reps,time_status$x1)
+rep_x1[rowSums(is.na(rep_x1))!=0,] = boot_grabs
+
+### For still-certified obs, add current date as right-censored end
+add_status = time_status
+add_status$x2[is.na(add_status$x2)] = current_date
+
+## For left truncated (certified before NOP start) obs, compute age at NOP start.
+
+age_at_nop = (ifelse(rep_x1<nop_dec,nop_dec - rep_x1,0))
+
+### How old is certification at date of last observation
+rep_x2 =
+  ### last obs - start date
+  (add_status$x2 - rep_x1)
+
+### How old is certificaiton at first obs (simulated for failures, observed for still-certified [0 for providers that are certified post-NOP start])
+start_x1 = age_at_nop
+
+surv_objects = lapply(1:reps, function(x) Surv(time=start_x1[,x],time2=rep_x2[,x],event=add_status$status))
+
+
+
+mods = lapply(surv_objects,function(x) coxme( x ~ crops + stock + handling + wild.crops +  (1|Certifier), 
+               data = scope))
+
+mdf = lapply(mods, function(x) as.data.frame(ranef(x),col.names='ranef'))
+
+
+for (i in 1:length(mdf))
+{
+  mdf[[i]]$Certifier = rownames(mdf[[i]])
+  rownames(mdf[[i]]) = 1:nrow(mdf[[i]])
+  mdf[[i]]$mod_run = i
+}
+
+all_results = plyr::join_all(mdf,type='full')
+
+tot_certs = temp %>% group_by(Certifier) %>% summarize(tot_certs = n())
+
+all_results$tot_certs = tot_certs$tot_certs[match(all_results$Certifier,tot_certs$Certifier)]
+library(viridis)
+ggplot(all_results,aes(y=exp(ranef),x=Certifier,colour=tot_certs)) + geom_boxplot()  +geom_hline(aes(yintercept=1),lty=2,col='grey50')+
+  theme_tufte(ticks=F) + theme(axis.text.y=element_blank(),
+                               legend.position = c(0.7,0.4),
+                               legend.direction='horizontal',
+                              legend.text = element_text(angle = 315,size=12),
+                              legend.background=element_rect(fill='grey90',
+                                                             color='grey40'))+
+  ylab('Certifier Random Effect (multiplicative effect on odds)') + 
+  scale_color_viridis(name = 'Total Operators \n w/ Certifier') +
+  coord_flip()
+```
+
+The plot above shows the different in proportional hazard rates across different certifiers. Estimates above 1indicate a greater-than average rate of failure.
+
+Further, while we likely want to think about some more covariates, as an example we can compare the coefficients for operators that did or did not seek certification for particular area:
+
 
 ```{r}
+fix_coefs = t(sapply(mods,fixef))
+library(tidyr)
+fix_coefs = gather(as.data.frame(fix_coefs))
+colnames(fix_coefs) = c('Cert','coef')
+ggplot(fix_coefs,aes(y=exp(coef),x=Cert)) + geom_boxplot() + 
+  ylab('Coef (multiplicative odds)')+
+  theme_tufte(ticks=F) + coord_flip()
+```
 
-table(usdf$Operation_Name[usdf$Year==2013&usdf$Status=='Surrendered'] %in%
-  usdf$Operation_Name[usdf$Year==2014])
+Note that at this preliminary stage, I did not explore any additive combinations (i.e., each type is fit separately just as a dummy variable).
+
+Finally, we can also run a model that accounts for non-binary outcomes. In our case, since we only observe one state per observation, this is simply a competing risks model. This means that we model certified providers as being able to "fail" into three different states: surrender, revocation, or suspension. Ideally, with multiple stages observed we would model a sequential events model (cert --> suspension --> revocation), or a model multi-state model (e.g., cert --> suspension --> cert). You (David) likely know more about the prevalence of such occurences, but in persuing these data my assumption is that most of these folks don't get back on board once they have lost their certification.
+
+```{r}
+surv_objects_mstate = lapply(1:reps, function(x) Surv(time=start_x1[,x],time2=rep_x2[,x],event=temp$Status,type='mstate'))
+
+surv_fit_obs = lapply(surv_objects_mstate,function(x) survfit(x~1))
+
+obs = lapply(surv_fit_obs,function(x) data.frame(x$prev,x$time))
+
+melted_obs = lapply(obs,function(x) melt(x,id='x.time'))
+
+melted_obs = lapply(1:length(melted_obs), function(x) melted_obs[[x]] %>% mutate(Model = x))
+
+combine_models = do.call('rbind',melted_obs)
+
+combine_models$model = rep(1:reps,unlist(lapply(melted_obs,nrow)))
+
+combine_models = combine_models %>% mutate(uq = paste(model,variable))
+
+ggplot(combine_models[combine_models$variable!='X4',],
+       aes(group=uq,x=x.time,y=value,colour=variable)) + 
+  geom_line() + xlab('Years after certification start') + 
+ scale_colour_colorblind(name='Status',
+                         labels=c('Revoked','Surrendered','Suspended'))+
+  theme_tufte(ticks=F) + theme(legend.position = c(0.8,0.45)) + 
+  ylab('Fraction') +
+  geom_vline(aes(xintercept=(
+current_date- decimal_date(nop_start))),lty=2) +
+  annotate('text',x=8,y=0.5,label='Post-NOP cutoff')
+```
+
+In the above plot, note that once we get beyond about 20 years or so, there are not many data points. The dashed line shows the age of a certification that started on the same date as the NOP program (October 21, 2002). So, any projections beyond that line incorporate observations were the certification actually started prior to the NOP start. As described above, for all of the analyses thus far I have dropped any observations where suspension/revocation/surrender occured before the NOP start, and recorded certifications that span NOP start as left-truncated. One alternative would be to incorporate all of those observations, and fit a covariate for NOP start. 
+
+```{r}
+library(mstate)
+
+data(ebmt3)
+### make transition matrix
 
 
-length(unique(usdf$Operation_Name))
+covs <- c("dissub", "age", "drmatch", "tcd", "prtime")
 
 
-all_years = expand.grid(unique(sort(usdf$Operation_Name)),2013:2016) %>% rename(Operation_Name = Var1,Year = Var2) %>% arrange(Operation_Name)
+tmat <-trans.comprisk(3,names = c('Certified',"Revoked", 
+                                  "Surrendered","Suspended"))
+scope = data.frame(
+stock = ifelse(temp$LIVESTOCK.Scope.Certification.Status!='',1,0),
+crops = ifelse(temp$CROPS.Scope.Certification.Status!='',1,0),
+wild.crops = ifelse(temp$WILD.CROPS.Scope.Certification.Status!='',1,0),
+handling = ifelse(temp$HANDLING.Scope.Certification.Status!='',1,0),
+Certifier = as.character(temp$Certifier)
+)
 
-test = left_join(all_years,usdf[,c('Operation_Name','Status','Year')])
+ tmat <- trans.illdeath(names = c("Tx", "PR", "RelDeath"))
+covs <- c("dissub", "age", "drmatch", "tcd", "prtime")
+msbmt <- msprep(time = c(NA, "prtime", "rfstime"), status = c(NA,
+"prstat", "rfsstat"), data = ebmt3, trans = tmat, keep = covs)
 
 
-grep('Diamond',test$Operation_Name,value=T)
+
+covs =
+msbmt <- msprep(time = c(NA, "prtime", "rfstime"), status = c(NA,
+"prstat", "rfsstat"), data = ebmt3, trans = tmat, keep = covs)
 
 
-table(usdf$Operation_Name[usdf$Year==2013&usdf$Status=='Surrendered'] %in%
-  usdf$Operation_Name[usdf$Year==2015])
 
-table(usdf$Operation_Name[usdf$Year==2013&usdf$Status=='Surrendered'] %in%
-  usdf$Operation_Name[usdf$Year==2014])
+head(ebmt3)
+head(msbmt)
+paths(tmat)
+
+
+dimnames(tmat) <- list(from = c("Certified", "Revoked", "Surrendered","Suspended"), to = 
+                           c("Certified", "Revoked", "Surrendered","Suspended"))
+tmat[1, 2:4] <- 1:3
+tmat
+head(ebmt3)
+
+
+df_objects = lapply(1:reps, function(x) data.frame(time=start_x1[,x],time2=rep_x2[,x],event=temp$Status,id = 1:nrow(temp)))
+
+temp$id = 1:nrow(temp)
+
+status_options = data.frame(status_options = c(0:3))
+
+test = merge(df_objects[[1]],status_options)
+
+status_key = data.frame(event = c('Certified','Revoked','Surrendered','Suspended'),
+           event_code = c(0,1,2,3))
+
+test = left_join(test,status_key,type='full')
+test = test %>% mutate(status = ifelse(event_code == status_options,1,0))
+
+
+tt = test %>% filter(event=='Revoked')
+
+table(tt$status)
+
+table(temp$Status)
+
+mods_mstate = lapply(surv_objects_mstate,function(x) coxme( x ~ crops + stock + handling + wild.crops +  (1|Certifier), 
+               data = scope))
 
 
 ```
-
-
-
-
-
-
-```
-
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-## Including Plots
-
-You can also embed plots, for example:
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
