@@ -85,7 +85,6 @@ w.the basic info needed is # of total organic operations per state, # of organic
 
 
 
-
 length(ifelse(temp$Status=='Certified',2016,temp$Year-1))
 
 do.call('expand.grid',)
