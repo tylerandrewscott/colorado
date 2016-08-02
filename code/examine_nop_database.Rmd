@@ -15,15 +15,47 @@ library(knitr)
 library(lubridate)
 knitr::opts_chunk$set(echo = TRUE)
 
-temp = read.csv('input/OID.OperationSearchResults.2016.7.1.3-57 PM.csv')
-temp = temp %>% filter(grepl('United States',Country))
+
+temp = read.csv('input/integrity_db/OID.OperationSearchResults.2016.7.1.3-57 PM.csv',stringsAsFactors = F)
+
+cert_df = temp %>% filter(grepl('United States',Country)|Country=='') %>% select(Certifier.Name) %>% filter(!duplicated(Certifier.Name)) %>%
+  arrange(Certifier.Name)
+
+
+
+write.csv(cert_df,'input/competition_input/certifiers.csv')
+
+cert_with_no_address = unique(temp$Certifier.Name[temp$Country==''])
+
+
+test = temp %>% filter(grepl('United States',Country)|Country=='') %>% 
+  filter(Certifier.Name %in% cert_with_no_address) %>%
+   mutate(Has_Location = Country!='')
+
+table(test$Certifier.Name,test$Has_Location)
+
+
+
+temp = temp %>% filter(grepl('United States',Country)|Country=='')
+
+
+
+
+test = temp %>% filter(Country==''|Certifier.Name=='Washington State Department of Agriculture')
+names(test)
+
+test$Operation.Name
+unique(test$City)
+sort(unique(test$Certifier.Name))
+
+test$
+
 
 temp = temp %>% rename(Last_Date = Effective.Date.of.Operation.Status,
                        Status = Operation.Certification.Status) %>%
   mutate(Last_Date = mdy(Last_Date)) %>% mutate(Dec_Date =decimal_date(Last_Date),Year = year(Last_Date),Month = month(Last_Date))  %>% rename(Certifier = Certifier.Name)
 
 library(tidyr)
-
 
 years = 2002:2016
 uq.operator = unique(temp$Operation.ID)
@@ -76,11 +108,7 @@ cert_state_links$Active = cert_state_links$Active == 1
 write.csv(cert_state_links,'input/competition_input/certifier_in_state_by_year.csv')
 
 
-cert_df = data.frame(Certifiers = as.character(sort(unique(cert_state_links$Certifier))))
 
-write.csv(cert_df,'input/competition_input/certifiers.csv')
-
-w.the basic info needed is # of total organic operations per state, # of organic operations by state per certifier, and the states in which a certifier certifies.  
 
 
 
