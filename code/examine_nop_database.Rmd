@@ -8,52 +8,39 @@ output:
 ---
 
 ```{r setup, include=FALSE}
+
 library(data.table)
 library(dplyr)
 library(readxl)
 library(knitr)
 library(lubridate)
 knitr::opts_chunk$set(echo = TRUE)
+library(readxl)
+rm(list=ls())
+
+temp = read.csv('input/integrity_db/OID.OperationSearchResults.2016.7.1.3-57 PM.csv',na.strings = "",stringsAsFactors = F)
+temp$Operation.ID = as.character(temp$Operation.ID)
+
+names(temp) = gsub('\\/','.',names(temp))
+names(temp) = gsub(' ','.',names(temp))
+
+temp = temp %>% mutate(
+City_master = ifelse(!is.na(City),City,City.1),
+Country_master = ifelse(!is.na(Country),Country,Country.1),
+State_master = ifelse(!is.na(State.Province),State.Province,State.Province.1),
+ZIP.Postal.Code_master =ifelse(!is.na(ZIP.Postal.Code),Country,Country.1))
 
 
-temp = read.csv('input/integrity_db/OID.OperationSearchResults.2016.7.1.3-57 PM.csv',stringsAsFactors = F)
-
-cert_df = temp %>% filter(grepl('United States',Country)|Country=='') %>% select(Certifier.Name) %>% filter(!duplicated(Certifier.Name)) %>%
+cert_df = temp %>% filter(grepl('United States',Country_master)) %>% select(Certifier.Name) %>% filter(!duplicated(Certifier.Name)) %>%
   arrange(Certifier.Name)
-
-
-
 write.csv(cert_df,'input/competition_input/certifiers.csv')
 
-cert_with_no_address = unique(temp$Certifier.Name[temp$Country==''])
 
-
-test = temp %>% filter(grepl('United States',Country)|Country=='') %>% 
-  filter(Certifier.Name %in% cert_with_no_address) %>%
-   mutate(Has_Location = Country!='')
-
-table(test$Certifier.Name,test$Has_Location)
-
-
-
-temp = temp %>% filter(grepl('United States',Country)|Country=='')
-
-
-
-
-test = temp %>% filter(Country==''|Certifier.Name=='Washington State Department of Agriculture')
-names(test)
-
-test$Operation.Name
-unique(test$City)
-sort(unique(test$Certifier.Name))
-
-test$
-
-
-temp = temp %>% rename(Last_Date = Effective.Date.of.Operation.Status,
+temp = temp %>% filter(grepl('United States',Country_master)) %>%
+  rename(Last_Date = Effective.Date.of.Operation.Status,
                        Status = Operation.Certification.Status) %>%
   mutate(Last_Date = mdy(Last_Date)) %>% mutate(Dec_Date =decimal_date(Last_Date),Year = year(Last_Date),Month = month(Last_Date))  %>% rename(Certifier = Certifier.Name)
+
 
 library(tidyr)
 
@@ -77,18 +64,20 @@ year_grid_expand = lapply(1:nrow(temp_post_2002),function(x)
 active_id_by_year =  do.call('rbind',year_grid_expand)
 colnames(active_id_by_year) = c('Operation.ID','Year')
 
-active_id_by_year$State = temp_post_2002$State.Province[match(active_id_by_year$Operation.ID,temp_post_2002$Operation.ID)]
+
+
+active_id_by_year$State_master = temp_post_2002$State_master[match(active_id_by_year$Operation.ID,temp_post_2002$Operation.ID)]
 active_id_by_year$Certifier = temp_post_2002$Certifier[match(active_id_by_year$Operation.ID,temp_post_2002$Operation.ID)]
 
 
-active_in_state = active_id_by_year %>% group_by(State,Year) %>% summarize(active_in_state = n())
-active_in_state$State_Abb = state.abb[match(active_in_state$State,state.name)]
+active_in_state = active_id_by_year %>% group_by(State_master,Year) %>% summarize(active_in_state = n())
+active_in_state$State_Abb = state.abb[match(active_in_state$State_master,state.name)]
 write.csv(active_in_state,'input/competition_input/operations_by_state_year.csv')
 
 
-active_in_state_by_certifier = active_id_by_year %>% group_by(State,Year,Certifier) %>%
+active_in_state_by_certifier = active_id_by_year %>% group_by(State_master,Year,Certifier) %>%
   summarize(active = n())
-active_in_state_by_certifier$State_Abb = state.abb[match(active_in_state_by_certifier$State,state.name)]
+active_in_state_by_certifier$State_Abb = state.abb[match(active_in_state_by_certifier$State_master,state.name)]
 write.csv(active_in_state_by_certifier,'input/competition_input/operations_by_state_year_certifier.csv')
 
 
@@ -96,7 +85,7 @@ cert_state_year = lapply(2002:2016,function(x)
   as.matrix(table(
     as.character(
       active_in_state_by_certifier$Certifier[active_in_state_by_certifier$Year==x]),
-      as.character(active_in_state_by_certifier$State[active_in_state_by_certifier$Year==x]))))
+      as.character(active_in_state_by_certifier$State_master[active_in_state_by_certifier$Year==x]))))
 
 cert_state_year_df_list = lapply(1:length(cert_state_year),function(x) as.data.frame(cert_state_year[[x]]) %>%
          mutate(Year = (2002:2016)[x]))
@@ -108,36 +97,6 @@ cert_state_links$Active = cert_state_links$Active == 1
 write.csv(cert_state_links,'input/competition_input/certifier_in_state_by_year.csv')
 
 
-
-
-
-
-
-length(ifelse(temp$Status=='Certified',2016,temp$Year-1))
-
-do.call('expand.grid',)
-    
-  ifelse(temp$Status[x]=='Certified',2016,temp$Year[x]-1)))
-
-inactive$Year[match(op_year_combos$Operation.ID,inactive$Operation.ID)]
-
-
-
-temp$Status
-
-
-complete(
-)
-
-
-
-nop_start = mdy('10/21/2002')
-##Note: 1 obs surrendered license on date of NOP start
-temp$Before_NOP = temp$Last_Date<=nop_start
-
-## Drop producers who were revoked, surrendered, or suspended _prior_ to adoption of NOP standards in October, 2002
-
-temp = temp %>% filter(!(Before_NOP&Status!='Certified'))
 ```
 
 ```{r echo=FALSE,results='as.is'}
